@@ -270,9 +270,9 @@ static void spi_init(void)
 {
 
    spi_bus_config_t buscfg = {
-      .mosi_io_num = 23,
+      .mosi_io_num = 27,
       .miso_io_num = -1,
-      .sclk_io_num = 18,
+      .sclk_io_num = 26,
       .quadwp_io_num = -1,
       .quadhd_io_num = -1,
       .max_transfer_sz = XFER_SIZE,
@@ -280,7 +280,7 @@ static void spi_init(void)
 
    spi_slave_interface_config_t slvcfg = {
       .mode = 0,
-      .spics_io_num = 5,
+      .spics_io_num = 25,
       .queue_size = 3,
       .flags = 0,
    };
