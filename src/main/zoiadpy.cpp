@@ -287,53 +287,48 @@ static void spi_init(void)
 
 }
 
-   
-// buffer for one scaled line, 3bpp, - - R G B R G B
 
-// buffer for one scaled line, 3bpp packed: 2 pixels per byte (3 bits each)
 static void copy_screen2(Lcd *lcd, uint8_t *buf_rx, uint8_t *buf_rx_prev)
 {
 #define SCALE 3
 
-    static uint8_t fb_line[OLED_W * SCALE / 2];
+   static uint16_t fb_line[OLED_W * SCALE * SCALE];  // buffer for one scaled line
 
-    for (int y = 0; y < OLED_H; y++) {
-        //if (memcmp(&buf_rx[o], &buf_rx_prev[o], OLED_W) == 0)
-        //    continue;
+   for (int y = 0; y < OLED_H; y++) {
 
-        memset(fb_line, 0, sizeof(fb_line));
+      uint16_t o = (y / 8) * OLED_W;
+      // skip line if no change
+      int diff = memcmp(&buf_rx[o], &buf_rx_prev[o], OLED_W);
+      if(diff == 0) continue;
 
-        uint16_t o = (y / 8) * OLED_W;
 
-        int sx = 0;
-        for (int x = 0; x < OLED_W; x++) {
-            uint16_t o = (y / 8) * OLED_W + x;
-            uint8_t b = y & 0x07;
-            bool pixel_on = buf_rx[o] & (1 << b);
+      for (int x = 0; x < OLED_W; x++) {
+         uint16_t o = (y / 8) * OLED_W + x;
+         uint8_t b = y & 0x07;
+         bool pixel_on = buf_rx[o] & (1 << b);
 
-            uint8_t color = pixel_on ? 0b111 : 0b000;
+         uint16_t color = pixel_on ? 0xFFFF : 0x0000;
 
-            for (int dx = 0; dx < SCALE; dx++) {
-                fb_line[sx / 2] |= color << (sx & 1 ? 0 : 3);
-                sx++;
-            }
-        }
+         // Fill 2x horizontally
+         for (int dx = 0; dx < SCALE; dx++) {
+            fb_line[x * SCALE + dx] = color;
+         }
+      }
 
-        // Send line SCALE times for vertical scaling
-        for (int dy = 0; dy < SCALE; dy++) {
-            lv_area_t area;
-            int sy = y * SCALE + dy;
+      // Send the same line twice (for 2x vertical scaling)
+      for (int dy = 0; dy < SCALE; dy++) {
+         lv_area_t area;
+         int sy = y * SCALE + dy;
 
-            area.x1 = 48;
-            area.x2 = 48 + OLED_W * SCALE - 1;
-            area.y1 = 32 + sy;
-            area.y2 = 32 + sy;
+         area.x1 = 48;
+         area.x2 = OLED_W * SCALE - 1 + 48;
+         area.y1 = sy + 32;
+         area.y2 = sy + 32;
 
-            lcd->disp_flush(nullptr, &area, fb_line);
-        }
-    }
+         lcd->disp_flush(nullptr, &area, (uint8_t *)fb_line);
+      }
+   }
 }
-
 
 
 

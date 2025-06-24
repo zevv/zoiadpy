@@ -59,7 +59,7 @@ DRAM_ATTR static const lcd_init_cmd_t lcd_init_cmds[] = {
 	{ ILI9488_CMD_POWER_CONTROL_2, { 0x41 }, 1 },
 	{ ILI9488_CMD_VCOM_CONTROL_1, { 0x00, 0x12, 0x80 }, 3 },
 	{ ILI9488_CMD_MEMORY_ACCESS_CONTROL, { 0x28 }, 1 },
-	{ ILI9488_CMD_COLMOD_PIXEL_FORMAT_SET, { 0x61 }, 1 },
+	{ ILI9488_CMD_COLMOD_PIXEL_FORMAT_SET, { 0x66 }, 1 },
 	{ ILI9488_CMD_INTERFACE_MODE_CONTROL, { 0x00 }, 1 },
 	{ ILI9488_CMD_FRAME_RATE_CONTROL_NORMAL, { 0xA0 }, 1 },
 	{ ILI9488_CMD_DISPLAY_INVERSION_CONTROL, { 0x02 }, 1 },
@@ -129,6 +129,23 @@ void Lcd::disp_flush(lv_display_t *disp, const lv_area_t *area,  uint8_t *color_
 	}
 
 	uint32_t size = lv_area_get_width(area) * lv_area_get_height(area);
+	if(size > m_rgb24_size) {
+		if(m_rgb24 != nullptr) {
+			heap_caps_free(m_rgb24);
+		}
+		m_rgb24_size = 3 * size;
+		m_rgb24 = (uint8_t *) heap_caps_malloc(m_rgb24_size, MALLOC_CAP_DMA);
+	}
+
+	// Color space conversion RGB16 -> RGB24
+
+	size_t j = 0;
+	for(size_t i=0; i<size; i++) {
+		uint32_t LD = ((uint16_t *)color_p)[i];
+		m_rgb24[j++] = (uint8_t) (((LD & 0xF800) >> 8) | ((LD & 0x8000) >> 13));
+        m_rgb24[j++] = (uint8_t) ((LD & 0x07E0) >> 3);
+        m_rgb24[j++] = (uint8_t) (((LD & 0x001F) << 3) | ((LD & 0x0010) >> 2));
+	}
 
 	// Prepare SPI transactions
 
@@ -166,8 +183,8 @@ void Lcd::disp_flush(lv_display_t *disp, const lv_area_t *area,  uint8_t *color_
 	t[4].tx_data[0] = ILI9488_CMD_MEMORY_WRITE;
 	t[4].user = (void*)0;
 
-	t[5].length = size / 2 * 8;
-	t[5].tx_buffer = (uint8_t*)color_p;
+	t[5].length = size * 3 * 8;
+	t[5].tx_buffer = m_rgb24;
 	t[5].user = (void*)1;
 
 	for(int i=0; i<6; i++) {
@@ -180,7 +197,9 @@ void Lcd::disp_flush(lv_display_t *disp, const lv_area_t *area,  uint8_t *color_
 
 
 Lcd::Lcd(gpio_num_t gpio_miso, gpio_num_t gpio_mosi, gpio_num_t gpio_sclk)
-	: m_npending(0)
+	: m_rgb24(nullptr)
+	, m_rgb24_size(0)
+	, m_npending(0)
 	, m_gpio_miso(gpio_miso)
 	, m_gpio_mosi(gpio_mosi)
         , m_gpio_sclk(gpio_sclk)
@@ -204,7 +223,7 @@ void Lcd::init()
 
 	spi_device_interface_config_t devcfg;
 	memset(&devcfg, 0, sizeof(devcfg));
-	devcfg.clock_speed_hz = 50 * 1000 * 1000;
+	devcfg.clock_speed_hz = 40 * 1000 * 1000;
 	devcfg.mode = 0;
 	devcfg.spics_io_num = GPIO_NUM_4;
 	devcfg.queue_size = 7;

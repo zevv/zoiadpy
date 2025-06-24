@@ -14,6 +14,8 @@ public:
 
 private:
 	
+	uint8_t *m_rgb24;
+	size_t m_rgb24_size;
 	int m_npending;
 	spi_device_handle_t m_spidev;
 	spi_transaction_t m_spi_transaction[6];
