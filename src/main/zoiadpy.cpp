@@ -14,8 +14,6 @@
 
 #include "lcd.hpp"
 
-#define OLED_W 128
-#define OLED_H 64
 
 
 static void spi_init(void)
@@ -41,6 +39,8 @@ static void spi_init(void)
 }
 
 
+#define OLED_W 128
+#define OLED_H 64
 #define SCALE 3
 
 static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
