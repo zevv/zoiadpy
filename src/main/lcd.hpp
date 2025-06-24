@@ -10,12 +10,10 @@ class Lcd {
 public:
 	Lcd(gpio_num_t gpio_miso, gpio_num_t gpio_mosi, gpio_num_t gpio_sclk);
 	void init();
-	void disp_flush(lv_display_t *disp, const lv_area_t *area,  uint8_t *color_p);
+	void disp_flush(const lv_area_t *area,  uint8_t *color_p);
 
 private:
 	
-	uint8_t *m_rgb24;
-	size_t m_rgb24_size;
 	int m_npending;
 	spi_device_handle_t m_spidev;
 	spi_transaction_t m_spi_transaction[6];

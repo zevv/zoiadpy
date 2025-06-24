@@ -7,6 +7,7 @@
 #include <stdbool.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <time.h>
 
 #include "driver/spi_slave.h"  
 #include "driver/gpio.h"     
@@ -82,41 +83,6 @@ static void oled_debug(struct oled *oled, const char *fmt, ...)
    va_end(args);
 }
 
-
-void dpy_pset(struct oled *oled, uint8_t x, uint8_t y, uint8_t v)
-{
-	if(x < 128 && y < 64) {
-
-		uint16_t o = (y/8) * OLED_W + x;
-		uint8_t b = y & 0x07;
-
-		if(v) {
-			oled->fb[o] |= (1<<b);
-		} else {
-			oled->fb[o] &= ~(1<<b);
-		}
-	}
-}
-
-void oled_flush(struct oled *oled)
-{
-   printf("\e[H");
-   for(int y=0; y < OLED_H; y++) {
-      for(int x=0; x < OLED_W; x++) {
-         uint16_t o = (y/8) * OLED_W + x;
-         uint8_t b = y & 0x07;
-
-         if(oled->fb[o] & (1<<b)) {
-            putchar('#');
-         } else {
-            putchar(' ');
-         }
-      }
-      printf("\n");
-   }
-
-   usleep(17 * 1000);
-}
 
 void oled_handle_byte(struct oled *oled, uint8_t b)
 {
@@ -250,13 +216,10 @@ void oled_handle_byte(struct oled *oled, uint8_t b)
    }
 
    else if(oled->state == OLED_STATE_DATA) {
-
       oled->fb[oled->ptr] = b;
       oled->ptr++;
-
       if(oled->ptr >= sizeof(oled->fb)) {
-         //oled_flush(oled);
-         oled->ptr = 0; // reset pointer to avoid overflow
+         oled->ptr = 0;
       }
    }
 }
@@ -288,44 +251,37 @@ static void spi_init(void)
 }
 
 
-static void copy_screen2(Lcd *lcd, uint8_t *buf_rx, uint8_t *buf_rx_prev)
-{
 #define SCALE 3
 
-   static uint16_t fb_line[OLED_W * SCALE * SCALE];  // buffer for one scaled line
+static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
+{
 
-   for (int y = 0; y < OLED_H; y++) {
+   for (int y=0; y<OLED_H; y++) {
 
-      uint16_t o = (y / 8) * OLED_W;
-      // skip line if no change
-      int diff = memcmp(&buf_rx[o], &buf_rx_prev[o], OLED_W);
-      if(diff == 0) continue;
-
-
-      for (int x = 0; x < OLED_W; x++) {
-         uint16_t o = (y / 8) * OLED_W + x;
+      uint8_t line[OLED_W];
+      for (int x=0; x<OLED_W; x++) {
+         uint16_t o = (y/8) * OLED_W + x;
          uint8_t b = y & 0x07;
-         bool pixel_on = buf_rx[o] & (1 << b);
-
-         uint16_t color = pixel_on ? 0xFFFF : 0x0000;
-
-         // Fill 2x horizontally
-         for (int dx = 0; dx < SCALE; dx++) {
-            fb_line[x * SCALE + dx] = color;
-         }
+         line[x] = buf_rx[o] & (1 << b);
       }
 
-      // Send the same line twice (for 2x vertical scaling)
-      for (int dy = 0; dy < SCALE; dy++) {
+      static uint8_t fb_line[OLED_W * SCALE];
+      uint8_t *p = fb_line;
+      for(int x=0; x<OLED_W*SCALE; x+=2) {
+         *p = 0;
+         if(line[x/SCALE + 0]) *p |= (7 << 3);
+         if(line[x/SCALE + 1]) *p |= (7 << 0);
+         p++;
+      }
+      
+      for(int dy=0; dy<SCALE; dy++) {
          lv_area_t area;
          int sy = y * SCALE + dy;
-
          area.x1 = 48;
          area.x2 = OLED_W * SCALE - 1 + 48;
-         area.y1 = sy + 32;
-         area.y2 = sy + 32;
-
-         lcd->disp_flush(nullptr, &area, (uint8_t *)fb_line);
+         area.y1 = sy + 64;
+         area.y2 = sy + 64;
+         lcd->disp_flush(&area, fb_line);
       }
    }
 }
@@ -333,13 +289,17 @@ static void copy_screen2(Lcd *lcd, uint8_t *buf_rx, uint8_t *buf_rx_prev)
 
 
 
-
+static double hirestime(void)
+{
+   struct timespec ts;
+   clock_gettime(CLOCK_MONOTONIC, &ts);
+   return ts.tv_sec + ts.tv_nsec / 1e9;
+}
 
 
 
 static uint8_t buf_tx[XFER_SIZE];
 static uint8_t buf_rx[XFER_SIZE];
-static uint8_t buf_rx_prev[XFER_SIZE];
 
 void start(void)
 {
@@ -363,7 +323,7 @@ void start(void)
 
       int ret = spi_slave_transmit(SPI3_HOST, &t, portMAX_DELAY);
       if(ret == ESP_OK) {
-         printf("%d\n", t.trans_len/8);
+         //printf("%d\n", t.trans_len/8);
          if(1) {
             for(size_t i=0; i<t.trans_len/8; i++) {
                oled_handle_byte(&oled, buf_rx[i]);
@@ -372,8 +332,10 @@ void start(void)
       }
 
       if(t.trans_len/8 == 1024) {
-         copy_screen2(lcd, buf_rx, buf_rx_prev);
-         memcpy(buf_rx_prev, buf_rx, sizeof(buf_rx_prev));
+         double t1 = hirestime();
+         copy_screen2(lcd, buf_rx);
+         double t2 = hirestime();
+         printf("%.3f\n", 1.0/(t2-t1));
       }
 
    }
