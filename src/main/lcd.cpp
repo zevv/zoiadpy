@@ -143,7 +143,7 @@ void Lcd::disp_flush(const Area *area,  uint8_t *color_p)
    t[4].tx_data[0] = ILI9488_CMD_MEMORY_WRITE;
    t[4].user = (void*)0;
 
-   t[5].length = (area->w * area->h) * 4 - 20; // why 20?
+   t[5].length = (area->w * area->h) * 4 - 32; // why?
    t[5].tx_buffer = color_p;
    t[5].user = (void*)1;
 
