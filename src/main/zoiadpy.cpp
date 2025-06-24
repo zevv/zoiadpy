@@ -39,14 +39,14 @@ static void spi_init(void)
 }
 
 
-static const int src_w = 128;
-static const int src_h = 64;
-static const int dst_w = 480;
-static const int dst_h = 320;
-static const int scale_y = dst_h / src_h;
 
 static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
 {
+   static const int src_w = 128;
+   static const int src_h = 64;
+   static const int dst_w = 480;
+   static const int dst_h = 320;
+   static const int scale_y = dst_h / src_h;
 
    for(int y=0; y<src_h; y++) {
 
@@ -54,24 +54,20 @@ static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
 
       static uint8_t fb_src[src_w];
       for (int x=0; x<src_w; x++) {
-         uint16_t o = (y/8) * src_w + x;
-         uint8_t b = y & 0x07;
+         int o = (y / 8) * src_w + x;
+         int b = y % 8;
          fb_src[x] = buf_rx[o] & (1 << b);
       }
 
       // Upscale to multiple LCD lines
 
       static uint8_t fb_dst[scale_y][dst_w / 2];
-
       int di = 0;
-      for(int x=0; x<dst_w; x+=2) {
+      int x = 0;
+      while(x < dst_w) {
          uint8_t v = 0;
-         int si;
-         si = (x + 0) * src_w / dst_w;
-         if(fb_src[si]) v |= (7 << 3);
-         si = (x + 1) * src_w / dst_w;
-         if(fb_src[si]) v |= (7 << 0);
-
+         if(fb_src[x++ * src_w / dst_w]) v |= (7 << 3);
+         if(fb_src[x++ * src_w / dst_w]) v |= (7 << 0);
          for(int dy=0; dy<scale_y; dy++) {
             fb_dst[dy][di] = v;
          }
