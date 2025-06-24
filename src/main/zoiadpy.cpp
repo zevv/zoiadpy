@@ -39,40 +39,51 @@ static void spi_init(void)
 }
 
 
-#define OLED_W 128
-#define OLED_H 64
-#define SCALE 3
+static const int src_w = 128;
+static const int src_h = 64;
+static const int dst_w = 480;
+static const int dst_h = 320;
+static const int scale_y = dst_h / src_h;
 
 static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
 {
 
-   for(int y=0; y<OLED_H; y++) {
+   for(int y=0; y<src_h; y++) {
 
-      uint8_t line[OLED_W];
-      for (int x=0; x<OLED_W; x++) {
-         uint16_t o = (y/8) * OLED_W + x;
+      // Decode one horizontal OLED line
+
+      static uint8_t fb_src[src_w];
+      for (int x=0; x<src_w; x++) {
+         uint16_t o = (y/8) * src_w + x;
          uint8_t b = y & 0x07;
-         line[x] = buf_rx[o] & (1 << b);
+         fb_src[x] = buf_rx[o] & (1 << b);
       }
 
-      static uint8_t fb_line[OLED_W * SCALE];
-      uint8_t *p = fb_line;
-      for(int x=0; x<OLED_W*SCALE; x+=2) {
-         *p = 0;
-         if(line[(x+0)/SCALE]) *p |= (7 << 3);
-         if(line[(x+1)/SCALE]) *p |= (7 << 0);
-         p++;
+      // Upscale to multiple LCD lines
+
+      static uint8_t fb_dst[scale_y][dst_w / 2];
+
+      int di = 0;
+      for(int x=0; x<dst_w; x+=2) {
+         uint8_t v = 0;
+         int si;
+         si = (x + 0) * src_w / dst_w;
+         if(fb_src[si]) v |= (7 << 3);
+         si = (x + 1) * src_w / dst_w;
+         if(fb_src[si]) v |= (7 << 0);
+
+         for(int dy=0; dy<scale_y; dy++) {
+            fb_dst[dy][di] = v;
+         }
+         di++;
       }
-      
-      for(int dy=0; dy<SCALE; dy++) {
-         lv_area_t area;
-         int sy = y * SCALE + dy;
-         area.x1 = 48;
-         area.x2 = OLED_W * SCALE - 1 + 48;
-         area.y1 = sy + 64;
-         area.y2 = sy + 64;
-         lcd->disp_flush(&area, fb_line);
-      }
+
+      Area area;
+      area.x = 0;
+      area.y = y * scale_y;
+      area.w = dst_w;
+      area.h = scale_y;
+      lcd->disp_flush(&area, fb_dst[0]);
    }
 }
 
@@ -88,7 +99,7 @@ static double hirestime(void)
 
 
 
-static uint8_t buf_rx[1024];
+static uint8_t buf_rx[2][1024];
 
 void start(void)
 {
@@ -97,25 +108,29 @@ void start(void)
    Lcd *lcd = new Lcd(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18);
    lcd->init();
 
+   int flip = 0;
+
    for(;;) {
 
       spi_slave_transaction_t t{};
-      t.length = sizeof(buf_rx) * 8;
+      t.length = sizeof(buf_rx[0]) * 8;
       t.tx_buffer = nullptr;
-      t.rx_buffer = buf_rx;
+      t.rx_buffer = buf_rx[flip];
 
       int ret = spi_slave_transmit(SPI3_HOST, &t, portMAX_DELAY);
       if(ret == ESP_OK) {
 
          if(t.trans_len/8 == 1024) {
             double t1 = hirestime();
-            copy_screen2(lcd, buf_rx);
+            copy_screen2(lcd, buf_rx[flip]);
+            flip = 1-flip;
             double t2 = hirestime();
             printf("%d %.3f\n", t.trans_len/8, 1.0/(t2-t1));
          } else {
             printf("%d\n", t.trans_len/8);
          }
       }
+
 
    }
 }

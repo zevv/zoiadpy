@@ -4,19 +4,17 @@
 #include "driver/spi_master.h"  
 #include "driver/gpio.h"     
 
-typedef struct lv_area {
-	int16_t x1;
-	int16_t y1;
-	int16_t x2;
-	int16_t y2;
-} lv_area_t;
+struct Area {
+	int x, y;
+	int w, h;
+};
 
 class Lcd {
 
 public:
 	Lcd(gpio_num_t gpio_miso, gpio_num_t gpio_mosi, gpio_num_t gpio_sclk);
 	void init();
-	void disp_flush(const lv_area_t *area,  uint8_t *color_p);
+	void disp_flush(const Area *area,  uint8_t *color_p);
 
 private:
 	

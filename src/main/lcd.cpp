@@ -59,7 +59,7 @@ DRAM_ATTR static const lcd_init_cmd_t lcd_init_cmds[] = {
    { ILI9488_CMD_POWER_CONTROL_2, { 0x41 }, 1 },
    { ILI9488_CMD_VCOM_CONTROL_1, { 0x00, 0x12, 0x80 }, 3 },
    { ILI9488_CMD_MEMORY_ACCESS_CONTROL, { 0x28 }, 1 },
-   { ILI9488_CMD_COLMOD_PIXEL_FORMAT_SET, { 0x01 }, 1 },
+   { ILI9488_CMD_COLMOD_PIXEL_FORMAT_SET, { 0x61 }, 1 },
    { ILI9488_CMD_INTERFACE_MODE_CONTROL, { 0x00 }, 1 },
    { ILI9488_CMD_FRAME_RATE_CONTROL_NORMAL, { 0xA0 }, 1 },
    { ILI9488_CMD_DISPLAY_INVERSION_CONTROL, { 0x02 }, 1 },
@@ -107,25 +107,8 @@ void lcd_data(spi_device_handle_t spi, const uint8_t *data, int len)
 }
 
 
-void Lcd::disp_flush(const lv_area_t *area,  uint8_t *color_p)
+void Lcd::disp_flush(const Area *area,  uint8_t *color_p)
 {
-   // If previous transaction is pending, wait for it to finish
-
-   while(m_npending > 0) {
-      spi_transaction_t *rtrans;
-      esp_err_t ret = spi_device_get_trans_result(m_spidev, &rtrans, portMAX_DELAY);
-      if(ret == ESP_OK) {
-         m_npending --;
-      } else {
-         printf("ret %s\n", esp_err_to_name(ret));
-      }
-   }
-
-   uint32_t size = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1);
-
-
-   // Prepare SPI transactions
-
    spi_transaction_t (&t)[6] = m_spi_transaction;
    memset(t, 0, sizeof(t));
 
@@ -136,10 +119,10 @@ void Lcd::disp_flush(const lv_area_t *area,  uint8_t *color_p)
 
    t[1].flags = SPI_TRANS_USE_TXDATA;
    t[1].length = 4 * 8;
-   t[1].tx_data[0] = area->x1 >> 8;
-   t[1].tx_data[1] = area->x1;
-   t[1].tx_data[2] = area->x2 >> 8;
-   t[1].tx_data[3] = area->x2;
+   t[1].tx_data[0] = area->x >> 8;
+   t[1].tx_data[1] = area->x >> 0;
+   t[1].tx_data[2] = (area->x + area->w - 1) >> 8;
+   t[1].tx_data[3] = (area->x + area->w - 1) >> 0;
    t[1].user = (void*)1;
 
    t[2].flags = SPI_TRANS_USE_TXDATA;
@@ -149,10 +132,10 @@ void Lcd::disp_flush(const lv_area_t *area,  uint8_t *color_p)
 
    t[3].flags = SPI_TRANS_USE_TXDATA;
    t[3].length = 4 * 8;
-   t[3].tx_data[0] = area->y1 >> 8;
-   t[3].tx_data[1] = area->y1;
-   t[3].tx_data[2] = area->y2 >> 8;
-   t[3].tx_data[3] = area->y2;
+   t[3].tx_data[0] = area->y >> 8;
+   t[3].tx_data[1] = area->y >> 0;
+   t[3].tx_data[2] = (area->y + area->h - 1) >> 8;
+   t[3].tx_data[3] = (area->y + area->h - 1) >> 0;
    t[3].user = (void*)1;
 
    t[4].flags = SPI_TRANS_USE_TXDATA;
@@ -160,13 +143,12 @@ void Lcd::disp_flush(const lv_area_t *area,  uint8_t *color_p)
    t[4].tx_data[0] = ILI9488_CMD_MEMORY_WRITE;
    t[4].user = (void*)0;
 
-   t[5].length = size / 2 * 8 - 28; // TODO why
+   t[5].length = (area->w * area->h) * 4 - 20; // why 20?
    t[5].tx_buffer = color_p;
    t[5].user = (void*)1;
 
    for(int i=0; i<6; i++) {
-      ESP_ERROR_CHECK(spi_device_queue_trans(m_spidev, &t[i], portMAX_DELAY));
-      m_npending ++;
+      ESP_ERROR_CHECK(spi_device_polling_transmit(m_spidev, &t[i]));
    }
 
 }
@@ -207,10 +189,9 @@ void Lcd::init()
    gpio_config_t io_conf = {};
    io_conf.mode = GPIO_MODE_OUTPUT;
    io_conf.pin_bit_mask = (1ULL << k_gpio_reset) 
-                   | (1ULL << k_gpio_dc)
-              | (1ULL << k_gpio_backlight);
+                        | (1ULL << k_gpio_dc)
+                        | (1ULL << k_gpio_backlight);
    gpio_config(&io_conf);
-   
    gpio_set_level(k_gpio_backlight, 1);
 
    gpio_set_level(k_gpio_reset, 0);
@@ -220,7 +201,6 @@ void Lcd::init()
 
    int cmd = 0;
    while (lcd_init_cmds[cmd].databytes != 0xff) {
-
       lcd_cmd(m_spidev, lcd_init_cmds[cmd].cmd, false);
       lcd_data(m_spidev, lcd_init_cmds[cmd].data, lcd_init_cmds[cmd].databytes & 0x1F);
       if (lcd_init_cmds[cmd].databytes & 0x80) {
@@ -231,12 +211,12 @@ void Lcd::init()
 
    uint16_t black[480];
    memset(black, 0, sizeof(black));
-   lv_area_t area;
+   Area area;
    for(int y=0; y<320; y++) {
-      area.x1 = 0;
-      area.x2 = 479;
-      area.y1 = y;
-      area.y2 = y;
+      area.x = 0;
+      area.y = 0;
+      area.w = 480;
+      area.h = 1;
       disp_flush(&area, (uint8_t *)black);
    }
 
