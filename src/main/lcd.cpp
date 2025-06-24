@@ -121,7 +121,7 @@ void Lcd::disp_flush(const lv_area_t *area,  uint8_t *color_p)
       }
    }
 
-   uint32_t size = lv_area_get_width(area) * lv_area_get_height(area);
+   uint32_t size = (area->x2 - area->x1 + 1) * (area->y2 - area->y1 + 1);
 
 
    // Prepare SPI transactions
@@ -183,8 +183,6 @@ Lcd::Lcd(gpio_num_t gpio_miso, gpio_num_t gpio_mosi, gpio_num_t gpio_sclk)
 
 void Lcd::init()
 {
-   lv_init();
-
    spi_bus_config_t buscfg;
    memset(&buscfg, 0, sizeof(buscfg));
    buscfg.miso_io_num = m_gpio_miso;

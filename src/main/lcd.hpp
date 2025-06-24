@@ -3,7 +3,13 @@
 
 #include "driver/spi_master.h"  
 #include "driver/gpio.h"     
-#include "lvgl.h"
+
+typedef struct lv_area {
+	int16_t x1;
+	int16_t y1;
+	int16_t x2;
+	int16_t y2;
+} lv_area_t;
 
 class Lcd {
 
