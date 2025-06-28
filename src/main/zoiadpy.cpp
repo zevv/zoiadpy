@@ -111,7 +111,8 @@ void task_lcd(void *arg)
 
    for(;;) {
       uint8_t buf[buf_rx_size];
-      if(xQueueReceive(queue, buf, 1)) {
+      int ticks = pdMS_TO_TICKS(33);
+      if(xQueueReceive(queue, buf, ticks)) {
          copy_screen2(lcd, buf);
       }
    }
