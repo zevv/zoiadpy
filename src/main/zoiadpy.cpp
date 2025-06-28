@@ -14,6 +14,7 @@
 
 #include "lcd.hpp"
 
+static const int buf_rx_size = 1024;
 
 
 static void spi_init(void)
@@ -25,7 +26,7 @@ static void spi_init(void)
    buscfg.sclk_io_num = 26;
    buscfg.quadwp_io_num = -1;
    buscfg.quadhd_io_num = -1;
-   buscfg.max_transfer_sz = 1024 * 8;
+   buscfg.max_transfer_sz = buf_rx_size * 8;
 
    spi_slave_interface_config_t slvcfg{};
    slvcfg.mode = 0;
@@ -39,6 +40,13 @@ static void spi_init(void)
 }
 
 
+static double hirestime(void)
+{
+   struct timespec ts;
+   clock_gettime(CLOCK_MONOTONIC, &ts);
+   return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
 
 static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
 {
@@ -47,6 +55,8 @@ static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
    static const int dst_w = 480;
    static const int dst_h = 320;
    static const int scale_y = dst_h / src_h;
+
+   double t1 = hirestime();
 
    for(int y=0; y<src_h; y++) {
 
@@ -81,53 +91,61 @@ static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
       area.h = scale_y;
       lcd->disp_flush(&area, fb_dst[0]);
    }
+
+   double t2 = hirestime();
+
+   if(0) {
+      printf("copy_screen2: %.3f\n", t2 - t1);
+   }
 }
 
 
 
 
-static double hirestime(void)
+static QueueHandle_t queue; 
+
+
+void task_lcd(void *arg)
 {
-   struct timespec ts;
-   clock_gettime(CLOCK_MONOTONIC, &ts);
-   return ts.tv_sec + ts.tv_nsec / 1e9;
+   Lcd *lcd = (Lcd *)arg;
+
+   for(;;) {
+      uint8_t buf[buf_rx_size];
+      if(xQueueReceive(queue, buf, 1)) {
+         copy_screen2(lcd, buf);
+      }
+   }
 }
 
-
-
-static uint8_t buf_rx[2][1024];
 
 void start(void)
 {
    spi_init();
 
+   queue = xQueueCreate(10, buf_rx_size);
+
    Lcd *lcd = new Lcd(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18);
    lcd->init();
 
-   int flip = 0;
+   xTaskCreate(task_lcd, "task_lcd", 4096, lcd, 5, nullptr);
+
+   uint8_t *buf = (uint8_t *)heap_caps_malloc(buf_rx_size, MALLOC_CAP_DMA);
 
    for(;;) {
 
       spi_slave_transaction_t t{};
-      t.length = sizeof(buf_rx[0]) * 8;
+      t.length = buf_rx_size * 8;
       t.tx_buffer = nullptr;
-      t.rx_buffer = buf_rx[flip];
+      t.rx_buffer = buf;
 
       int ret = spi_slave_transmit(SPI3_HOST, &t, portMAX_DELAY);
       if(ret == ESP_OK) {
-
-         if(t.trans_len/8 == 1024) {
-            double t1 = hirestime();
-            copy_screen2(lcd, buf_rx[flip]);
-            flip = 1-flip;
-            double t2 = hirestime();
-            printf("%d %.3f\n", t.trans_len/8, 1.0/(t2-t1));
+         if(t.trans_len/8 == buf_rx_size) {
+            xQueueSendToFront(queue, buf, portMAX_DELAY);
          } else {
-            printf("%d\n", t.trans_len/8);
+            printf("xrun %d\n", t.trans_len/8);
          }
       }
-
-
    }
 }
 
