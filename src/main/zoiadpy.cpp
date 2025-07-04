@@ -1,4 +1,3 @@
-#include <stdio.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -34,9 +33,8 @@ static void spi_init(void)
    slvcfg.queue_size = 3;
    slvcfg.flags = 0;
 
-   int ret = spi_slave_initialize(SPI3_HOST, &buscfg, &slvcfg, SPI_DMA_CH_AUTO);
+   int ret = spi_slave_initialize(SPI2_HOST, &buscfg, &slvcfg, SPI_DMA_CH_AUTO);
    assert(ret == ESP_OK);
-
 }
 
 
@@ -107,14 +105,14 @@ static QueueHandle_t queue;
 
 void task_lcd(void *arg)
 {
-   Lcd *lcd = (Lcd *)arg;
+   Lcd *lcd = new Lcd(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18);
+   lcd->init();
 
    for(;;) {
       uint8_t buf[buf_rx_size];
       int ticks = pdMS_TO_TICKS(33);
-      if(xQueueReceive(queue, buf, ticks)) {
-         copy_screen2(lcd, buf);
-      }
+      xQueueReceive(queue, buf, ticks);
+      copy_screen2(lcd, buf);
    }
 }
 
@@ -125,27 +123,28 @@ void start(void)
 
    queue = xQueueCreate(10, buf_rx_size);
 
-   Lcd *lcd = new Lcd(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18);
-   lcd->init();
-
-   xTaskCreate(task_lcd, "task_lcd", 4096, lcd, 5, nullptr);
-
-   uint8_t *buf = (uint8_t *)heap_caps_malloc(buf_rx_size, MALLOC_CAP_DMA);
+   xTaskCreate(task_lcd, "task_lcd", 4096, nullptr, 5, nullptr);
+      
+   spi_slave_transaction_t ts[4]{};
+   for(int i=0; i<4; i++) {
+      spi_slave_transaction_t *t = &ts[i];
+      t->length = buf_rx_size * 8;
+      t->rx_buffer = heap_caps_malloc(buf_rx_size, MALLOC_CAP_DMA);
+      spi_slave_queue_trans(SPI2_HOST, t, portMAX_DELAY);
+   }
 
    for(;;) {
-
-      spi_slave_transaction_t t{};
-      t.length = buf_rx_size * 8;
-      t.tx_buffer = nullptr;
-      t.rx_buffer = buf;
-
-      int ret = spi_slave_transmit(SPI3_HOST, &t, portMAX_DELAY);
+      spi_slave_transaction_t *t;
+      int ret = spi_slave_get_trans_result(SPI2_HOST, &t, portMAX_DELAY);
       if(ret == ESP_OK) {
-         if(t.trans_len/8 == buf_rx_size) {
-            xQueueSendToFront(queue, buf, portMAX_DELAY);
+         if(t->trans_len/8 == buf_rx_size) {
+            xQueueSendToFront(queue, t->rx_buffer, portMAX_DELAY);
          } else {
-            printf("xrun %d\n", t.trans_len/8);
+            printf("xrun %d\n", t->trans_len/8);
          }
+         spi_slave_queue_trans(SPI2_HOST, t, portMAX_DELAY);
+      } else {
+         printf("error %d\n", ret);
       }
    }
 }

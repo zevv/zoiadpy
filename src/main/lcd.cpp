@@ -173,7 +173,7 @@ void Lcd::init()
    buscfg.quadwp_io_num = -1;
    buscfg.quadhd_io_num = -1;
    buscfg.max_transfer_sz = 4096 * 8;
-   ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &buscfg, SPI_DMA_CH_AUTO));
+   ESP_ERROR_CHECK(spi_bus_initialize(SPI3_HOST, &buscfg, SPI_DMA_CH_AUTO));
 
    spi_device_interface_config_t devcfg;
    memset(&devcfg, 0, sizeof(devcfg));
@@ -184,7 +184,7 @@ void Lcd::init()
    devcfg.pre_cb = lcd_spi_pre_transfer_callback;
    devcfg.flags = SPI_DEVICE_HALFDUPLEX;
 
-   ESP_ERROR_CHECK(spi_bus_add_device(SPI2_HOST, &devcfg, &m_spidev));
+   ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &m_spidev));
 
    gpio_config_t io_conf = {};
    io_conf.mode = GPIO_MODE_OUTPUT;
