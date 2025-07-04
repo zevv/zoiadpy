@@ -167,7 +167,7 @@ void Lcd::init()
 {
    spi_bus_config_t buscfg;
    memset(&buscfg, 0, sizeof(buscfg));
-   buscfg.miso_io_num = m_gpio_miso;
+   buscfg.miso_io_num = -1;
    buscfg.mosi_io_num = m_gpio_mosi;
    buscfg.sclk_io_num = m_gpio_sclk;
    buscfg.quadwp_io_num = -1;
@@ -182,7 +182,7 @@ void Lcd::init()
    devcfg.spics_io_num = GPIO_NUM_4;
    devcfg.queue_size = 7;
    devcfg.pre_cb = lcd_spi_pre_transfer_callback;
-   devcfg.flags = SPI_DEVICE_HALFDUPLEX;
+   devcfg.flags = 0;
 
    ESP_ERROR_CHECK(spi_bus_add_device(SPI3_HOST, &devcfg, &m_spidev));
 
