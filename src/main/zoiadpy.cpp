@@ -27,7 +27,6 @@ static const int buf_rx_size = oled_w * oled_h / 8;
 
 static void spi_init(void)
 {
-
    spi_bus_config_t buscfg{};
    buscfg.mosi_io_num = 27;
    buscfg.miso_io_num = -1;
@@ -109,14 +108,14 @@ static void copy_screen2(Lcd *lcd, uint8_t *buf_rx)
 
 
 
-static QueueHandle_t queue; 
+static QueueHandle_t queue;
 
 
 void task_lcd(void *arg)
 {
    Lcd *lcd = new Lcd(GPIO_NUM_19, GPIO_NUM_23, GPIO_NUM_18);
    lcd->init();
-      
+
    static uint8_t buf[buf_rx_size];
 
    for(;;) {
@@ -131,7 +130,7 @@ void start(void)
 
    queue = xQueueCreate(buf_rx_count, buf_rx_size);
    xTaskCreate(task_lcd, "task_lcd", 8192, nullptr, 5, nullptr);
-   
+
    // init spi and fill up the buffer pool
    spi_init();
    spi_slave_transaction_t ts[buf_rx_count]{};
@@ -139,7 +138,6 @@ void start(void)
       spi_slave_transaction_t *t = &ts[i];
       t->length = buf_rx_size * 8;
       t->rx_buffer = spi_bus_dma_memory_alloc(SPI2_HOST, buf_rx_size, 0);
-      memset(t->rx_buffer, 0x01, buf_rx_size);
       t->user = (void *)i;
       int ret = spi_slave_queue_trans(SPI2_HOST, t, portMAX_DELAY);
       if(ret != ESP_OK) printf("spi_slave_queue_trans error %d\n", ret);
@@ -160,7 +158,6 @@ void start(void)
             printf("xrun %d\n", t->trans_len/8);
             usleep(10 * 1000);
          }
-         memset(t->rx_buffer, 0x1, buf_rx_size);
          ret = spi_slave_queue_trans(SPI2_HOST, t, portMAX_DELAY);
          if(ret != ESP_OK) printf("spi_slave_queue_trans error %d\n", ret);
       }

@@ -37,6 +37,7 @@ gpio_num_t k_gpio_backlight = GPIO_NUM_15;
 #define ILI9488_CMD_COLUMN_ADDRESS_SET              0x2A
 #define ILI9488_CMD_PAGE_ADDRESS_SET                0x2B
 #define ILI9488_CMD_MEMORY_WRITE                    0x2C
+#define ILI9488_CMD_ALL_PIXELS_OFF                  0x22
 
 
 // portrait: 0x48
@@ -188,11 +189,11 @@ void Lcd::init()
 
    gpio_config_t io_conf = {};
    io_conf.mode = GPIO_MODE_OUTPUT;
-   io_conf.pin_bit_mask = (1ULL << k_gpio_reset) 
+   io_conf.pin_bit_mask = (1ULL << k_gpio_reset)
                         | (1ULL << k_gpio_dc)
                         | (1ULL << k_gpio_backlight);
    gpio_config(&io_conf);
-   gpio_set_level(k_gpio_backlight, 1);
+   gpio_set_level(k_gpio_backlight, 0);
 
    gpio_set_level(k_gpio_reset, 0);
    vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -209,6 +210,8 @@ void Lcd::init()
       cmd++;
    }
 
+   lcd_cmd(m_spidev, ILI9488_CMD_DISPLAY_ON, false);
+
    uint16_t black[480];
    memset(black, 0, sizeof(black));
    Area area;
@@ -220,6 +223,7 @@ void Lcd::init()
       disp_flush(&area, (uint8_t *)black);
    }
 
+   gpio_set_level(k_gpio_backlight, 1);
 }
 
 
